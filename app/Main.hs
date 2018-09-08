@@ -15,6 +15,7 @@ import           Web.Spock.Config
 import           Data.Aeson              hiding (json)
 import           Data.Monoid             ((<>))
 import           Data.Text               (Text, pack)
+import           Prelude
 
 import           Control.Monad.Logger    (LoggingT, runStdoutLoggingT)
 import           Database.Persist        hiding (get)
@@ -25,9 +26,9 @@ import           Database.Persist.TH
 share
   [mkPersist sqlSettings, mkMigrate "migrateAll"]
   [persistLowerCase|
-Person json -- The json keyword will make Persistent generate sensible ToJSON and FromJSON instances for us.
-  name Text
-  age Int
+
+Story json -- The json keyword will make Persistent generate sensible ToJSON and FromJSON instances for us.
+  json Text
   deriving Show
 |]
 
@@ -37,28 +38,29 @@ type ApiAction a = SpockAction SqlBackend () () a
 
 main :: IO ()
 main = do
+  print "Starting Sean's Big Backend"
   pool <- runStdoutLoggingT $ createSqlitePool "api.db" 5
-  spockCfg <- defaultSpockCfg () (PCPool pool) ()
+  spockCfg <- (\cfg -> cfg { spc_csrfProtection = True }) <$> defaultSpockCfg () (PCPool pool) ()
   runStdoutLoggingT $ runSqlPool (do runMigration migrateAll) pool
   runSpock 8080 (spock spockCfg app)
 
 app :: Api
 app = do
-  get "people" $ do
-    allPeople <- runSQL $ selectList [] [Asc PersonId]
-    json allPeople
-  post "people" $ do
-    maybePerson <- jsonBody :: ApiAction (Maybe Person)
-    case maybePerson of
-      Nothing -> errorJson 1 "Failed to parse request body as Person"
-      Just thePerson -> do
-        newId <- runSQL $ insert thePerson
+  get "stories" $ do
+    allStories <- runSQL $ selectList [] [Asc StoryId]
+    json allStories
+  post "stories" $ do
+    maybeStory <- jsonBody :: ApiAction (Maybe Story)
+    case maybeStory of
+      Nothing -> errorJson 1 "Failed to parse request body as Story"
+      Just theStory -> do
+        newId <- runSQL $ insert theStory
         json $ object ["result" .= String "success", "id" .= newId]
-  get ("people" <//> var) $ \personId -> do
-    maybePerson <- runSQL $ P.get personId :: ApiAction (Maybe Person)
-    case maybePerson of
-      Nothing        -> errorJson 2 "Could not find a person with matchind id"
-      Just thePerson -> json thePerson
+  get ("stories" <//> var) $ \storyId -> do
+    maybeStory <- runSQL $ P.get storyId :: ApiAction (Maybe Story)
+    case maybeStory of
+      Nothing       -> errorJson 2 "Could not find a story with matching id"
+      Just theStory -> json theStory
 
 runSQL
   :: (HasSpock m, SpockConn m ~ SqlBackend)
