@@ -36,16 +36,21 @@ type Api = SpockM SqlBackend () () ()
 
 type ApiAction a = SpockAction SqlBackend () () a
 
+corsHeader =
+  do ctx <- getContext
+     setHeader "Access-Control-Allow-Origin" "*"
+     pure ctx
+
 main :: IO ()
 main = do
-  print "Starting Sean's Big Backend"
+  print "Starting Sean's New Backend"
   pool <- runStdoutLoggingT $ createSqlitePool "api.db" 5
-  spockCfg <- (\cfg -> cfg { spc_csrfProtection = True }) <$> defaultSpockCfg () (PCPool pool) ()
+  spockCfg <- (\cfg -> cfg { spc_csrfProtection = False }) <$> defaultSpockCfg () (PCPool pool) ()
   runStdoutLoggingT $ runSqlPool (do runMigration migrateAll) pool
   runSpock 8080 (spock spockCfg app)
 
 app :: Api
-app = do
+app = prehook corsHeader $ do
   get "stories" $ do
     allStories <- runSQL $ selectList [] [Asc StoryId]
     json allStories
